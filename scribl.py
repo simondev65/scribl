@@ -8,7 +8,7 @@
 #
 # Make sure nc (netcat) is in the path or hard code it below to fit your needs
 
-import argparse,os,subprocess,sys,time,logging
+import argparse,os,subprocess,sys,time,logging,shlex
 from multiprocessing import Pool
 
 def getArgs(argv=None):
@@ -36,14 +36,25 @@ def list_full_paths(directory,earliest,latest):
             dirs.remove(dir)
     return [os.path.join(directory, file) for file in dirs]
 
+TEMP_DIR="/tmp/scribl"
+
+def ensure_temp_dir():
+    os.makedirs(TEMP_DIR, exist_ok=True)
+
 def buildCmdList(buckets,args):
+    ensure_temp_dir()
     cliCommands=[]
-    for bucket in buckets:
-        exporttoolCmd="/opt/splunk/bin/splunk cmd exporttool "+bucket+" /dev/stdout -csv | nc "
+    timestamp=int(time.time())
+    for idx,bucket in enumerate(buckets):
+        quoted_bucket=shlex.quote(bucket)
+        temp_file=os.path.join(TEMP_DIR,f"{os.path.basename(bucket)}_{idx}_{timestamp}.csv")
+        quoted_temp=shlex.quote(temp_file)
+        exporttoolCmd="/opt/splunk/bin/splunk cmd exporttool "+quoted_bucket+" "+quoted_temp+" -csv && (cat "+quoted_temp+" | nc "
         if args.TLS:
             exporttoolCmd+="--ssl "
         exporttoolCmd+=args.remoteIP
         exporttoolCmd+=" "+args.remotePort
+        exporttoolCmd+=") && rm -f "+quoted_temp
         cliCommands.append(exporttoolCmd)
     return cliCommands
 
@@ -89,3 +100,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
